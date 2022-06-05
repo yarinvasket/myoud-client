@@ -2,6 +2,8 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'path';
 
+import api from './client-api';
+
 function createWindow () {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
@@ -38,6 +40,12 @@ app.whenReady().then(() => {
 app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit();
 });
+
+const signaturePromise = api.register('abcd', 'efg');
+
+signaturePromise.then(signature => {
+  console.log(signature); // TODO: debug
+})
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and require them here.
