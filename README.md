@@ -1,4 +1,4 @@
-# Myoud
+# Myoud client application
 
 This is a fork of [electron-quick-start](https://github.com/electron/electron-quick-start).
 
