@@ -41,10 +41,10 @@ app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit();
 });
 
-const signaturePromise = api.register('abcd', 'efg');
+const responsePromise = api.register('abcd', 'efg');
 
-signaturePromise.then(signature => {
-  console.log(signature); // TODO: debug
+responsePromise.then(response => {
+  console.log(response); // TODO: debug
 })
 
 // In this file you can include the rest of your app's specific main process
