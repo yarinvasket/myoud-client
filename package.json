@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "bcrypt": "^5.0.1",
+    "electron-fetch": "^1.7.4",
     "openpgp": "^5.2.1"
   }
 }

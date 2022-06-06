@@ -1,8 +1,17 @@
 import * as openpgp from 'openpgp';
 import * as bcrypt from 'bcrypt';
+import fetch from 'electron-fetch';
 
 const globalsalt: string = '';
-const serverurl = '';
+const serverurl: string = '';
+
+function base64encode(str: string) {
+    return Buffer.from(str, 'utf8').toString('base64');
+}
+
+function base64decode(base64str: string) {
+    return Buffer.from(base64str, 'base64').toString('utf8');
+}
 
 async function register(username : string, password : string) {
     const { privateKey, publicKey } = await openpgp.generateKey({
@@ -36,9 +45,9 @@ async function register(username : string, password : string) {
 
     const requestBody = {
         user_name: username,
-        public_key: publicKey.armor(),
-        signature: String(signature),
-        encrypted_private_key: String(encrypted_private_key),
+        public_key: base64encode(publicKey.armor()),
+        signature: base64encode(String(signature)),
+        encrypted_private_key: base64encode(String(encrypted_private_key)),
         hashed_password,
         salt2
     };
