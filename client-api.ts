@@ -153,7 +153,6 @@ async function login(username: string, password: string, rememberMe: boolean) {
 
 //  Save all of the credentials if "remember me" was ticked
     if (rememberMe) {
-        keytar.setPassword('publicKey', username, publicKey.armor());
         keytar.setPassword('privateKey', username, privateKey.armor());
         keytar.setPassword('token', username, token);
     }
@@ -161,7 +160,6 @@ async function login(username: string, password: string, rememberMe: boolean) {
 
 async function logout() {
 //  Delete from keytar
-    keytar.deletePassword('publicKey', uname);
     keytar.deletePassword('privateKey', uname);
     keytar.deletePassword('token', uname);
 
@@ -174,14 +172,33 @@ async function logout() {
     privateKey = new Object() as openpgp.PrivateKey;
     publicKey = privateKey;
     token = '';
+    uname = '';
 
     return await sendRequest('logout', body);
+}
+
+async function restoreSession() {
+    try {
+        uname = (await keytar.findCredentials('privateKey'))[0].account;
+    } catch {
+        return false;
+    }
+    const armoredKey = (await keytar.findCredentials('privateKey'))[0].password;
+    token = (await keytar.findCredentials('token'))[0].password;
+
+    privateKey = await openpgp.readPrivateKey({
+        armoredKey: armoredKey
+    });
+    publicKey = privateKey.toPublic();
+
+    return true;
 }
 
 const api = {
     register,
     login,
     logout,
+    restoreSession,
     closeDHT
 };
 
