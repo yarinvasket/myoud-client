@@ -8,8 +8,8 @@ const dht = new DHT({
     verify: (signature: Buffer, message: Buffer, publicKey: Buffer) => {return true;}
 });
 
-const globalsalt: string = '';
-const serverurl: string = '';
+const globalsalt: string = 'KI2opNu0OlTbORf6';
+const serverurl: string = 'http://localhost:5000';
 
 let publicKey: openpgp.PublicKey;
 let privateKey: openpgp.PrivateKey;
@@ -110,7 +110,7 @@ async function login(username: string, password: string, rememberMe: boolean) {
     };
 
     const response = await sendRequest('get_salt', requestBody);
-    const { salt } = JSON.parse(String(response.body));
+    const { salt } = JSON.parse(await response.text());
 
 //  Hash the password
     const hashed_password = await bcrypt.hash(password, salt);
@@ -123,7 +123,7 @@ async function login(username: string, password: string, rememberMe: boolean) {
     }
 
 //  Extract values out of response
-    const params = JSON.parse(String((await sendRequest('login', loginRequest)).body));
+    const params = JSON.parse(await (await sendRequest('login', loginRequest)).text());
     token = params.token;
     const encrypted_private_key = await openpgp.readMessage({
         armoredMessage: base64decode(params.sk)
@@ -131,7 +131,7 @@ async function login(username: string, password: string, rememberMe: boolean) {
 
 //  Get salt2 to decrypt private key
     const response2 = await sendRequest('get_salt2', requestBody);
-    const { salt2 } = JSON.parse(String(response2.body));
+    const { salt2 } = JSON.parse(await response2.text());
 
 //  Symmetric decryption key
     const decKey = await bcrypt.hash(password, salt2);
@@ -157,9 +157,14 @@ async function login(username: string, password: string, rememberMe: boolean) {
     }
 }
 
+async function logout() {
+
+}
+
 const api = {
     register,
     login,
+    logout,
     closeDHT
 };
 

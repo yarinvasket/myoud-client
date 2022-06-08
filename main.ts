@@ -45,8 +45,7 @@ app.on('window-all-closed', function () {
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and require them here.
-const responsePromise = api.register('abcd', 'efg');
-
-responsePromise.then(response => {
-  console.log(response); // TODO: debug
-});
+(async () => {
+  const registerResponse = await api.register('abcd', 'efg');
+  const loginResponse = await api.login('abcd', 'efg', true);
+})();
