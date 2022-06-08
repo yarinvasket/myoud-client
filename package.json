@@ -26,8 +26,8 @@
   "dependencies": {
     "bcrypt": "^5.0.1",
     "bittorrent-dht": "^10.0.4",
-    "bittorrent-dht-sodium": "^1.2.0",
     "electron-fetch": "^1.7.4",
+    "keytar": "^7.9.0",
     "openpgp": "^5.2.1"
   }
 }

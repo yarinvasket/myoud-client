@@ -1,13 +1,19 @@
 import * as openpgp from 'openpgp';
 import * as bcrypt from 'bcrypt';
+import * as keytar from 'keytar';
 import fetch from 'electron-fetch';
+import crypto from 'node:crypto';
 const DHT = require('bittorrent-dht');
-const ed = require('bittorrent-dht-sodium');
-const dht = new DHT({ verify: ed.verify });
+const dht = new DHT({
+    verify: (signature: Buffer, message: Buffer, publicKey: Buffer) => {return true;}
+});
 
 const globalsalt: string = '';
 const serverurl: string = '';
-const dhtport: number = 0;
+
+let publicKey: openpgp.PublicKey;
+let privateKey: openpgp.PrivateKey;
+let token: string;
 
 function base64encode(str: string) {
     return Buffer.from(str, 'utf8').toString('base64');
@@ -21,19 +27,26 @@ function closeDHT() {
     dht.destroy();
 }
 
+async function sendRequest(command: string, body: any) {
+    return await fetch(
+        serverurl + '/' + command, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        }
+    );
+}
+
 async function register(username: string, password: string) {
 //  Generate key pair
-    const {privateKey: privateKeyBinary, publicKey: publicKeyBinary} = await openpgp.generateKey({
-        type: 'ecc', // Type of the key
-        curve: 'ed25519', // Curve, dht requires ed25519
+    const { privateKey, publicKey } = await openpgp.generateKey({
+        type: 'rsa', // Type of the key
+        rsaBits: 4096, // Curve, dht requires ed25519
         userIDs: [{ name: username, email: username + '@myoud.org' }], // you can pass multiple user IDs
-        format: 'binary' // output key format, defaults to 'armored'
+        format: 'object' // output key format, defaults to 'armored'
     });
-
-    const privateKey = await openpgp.readPrivateKey({
-        binaryKey: privateKeyBinary
-    });
-    const publicKey = privateKey.toPublic();
 
 //  Prove ownership of public key by signing username + globalsalt
     const message = await openpgp.createMessage({text: username + globalsalt});
@@ -62,11 +75,12 @@ async function register(username: string, password: string) {
         await bcrypt.genSalt());
 
 //  Push key to DHT
+    const publicKeyBinary = publicKey.toPacketList().write();
     const value = Buffer.alloc(200).fill(username);
     const opts = {
-        k: Buffer.from(publicKeyBinary),
+        k: crypto.createHash('sha256').update(publicKeyBinary).digest(),
         sign: function(buf: Buffer) {
-            return ed.sign(buf, privateKeyBinary);
+            return Buffer.from('no');
         },
         seq: 0,
         v: value
@@ -84,21 +98,68 @@ async function register(username: string, password: string) {
     };
 
 //  Send the request
-    const registerResponse = await fetch(
-        serverurl + '/register', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(requestBody)
-        }
-    );
+    const registerResponse = sendRequest('register', requestBody);
 
     return registerResponse;
 }
 
+async function login(username: string, password: string, rememberMe: boolean) {
+//  Request the salt to hash the password
+    const requestBody = {
+        user_name: username
+    };
+
+    const response = await sendRequest('get_salt', requestBody);
+    const { salt } = JSON.parse(String(response.body));
+
+//  Hash the password
+    const hashed_password = await bcrypt.hash(password, salt);
+
+//  Send login request
+    const loginRequest = {
+        user_name: username,
+        hashed_password,
+        session_timeout: rememberMe ? 0 : 900
+    }
+
+//  Extract values out of response
+    const params = JSON.parse(String((await sendRequest('login', loginRequest)).body));
+    token = params.token;
+    const encrypted_private_key = await openpgp.readMessage({
+        armoredMessage: base64decode(params.sk)
+    });
+
+//  Get salt2 to decrypt private key
+    const response2 = await sendRequest('get_salt2', requestBody);
+    const { salt2 } = JSON.parse(String(response2.body));
+
+//  Symmetric decryption key
+    const decKey = await bcrypt.hash(password, salt2);
+
+//  Decrypt private key
+    const decryptedKey = await openpgp.decrypt({
+        message: encrypted_private_key,
+        passwords: decKey
+    });
+
+//  Read private key
+    privateKey = await openpgp.readPrivateKey({
+        armoredKey: decryptedKey.data.toString()
+    });
+
+    publicKey = privateKey.toPublic();
+
+//  Save all of the credentials if "remember me" was ticked
+    if (rememberMe) {
+        keytar.setPassword('publicKey', username, publicKey.armor());
+        keytar.setPassword('privateKey', username, privateKey.armor());
+        keytar.setPassword('token', username, token);
+    }
+}
+
 const api = {
     register,
+    login,
     closeDHT
 };
 
