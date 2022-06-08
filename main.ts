@@ -48,4 +48,5 @@ app.on('window-all-closed', function () {
 (async () => {
   const registerResponse = await api.register('abcd', 'efg');
   const loginResponse = await api.login('abcd', 'efg', true);
+  const logoutResponse = await api.logout();
 })();

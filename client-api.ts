@@ -14,6 +14,7 @@ const serverurl: string = 'http://localhost:5000';
 let publicKey: openpgp.PublicKey;
 let privateKey: openpgp.PrivateKey;
 let token: string;
+let uname: string;
 
 function base64encode(str: string) {
     return Buffer.from(str, 'utf8').toString('base64');
@@ -148,6 +149,7 @@ async function login(username: string, password: string, rememberMe: boolean) {
     });
 
     publicKey = privateKey.toPublic();
+    uname = username;
 
 //  Save all of the credentials if "remember me" was ticked
     if (rememberMe) {
@@ -158,7 +160,22 @@ async function login(username: string, password: string, rememberMe: boolean) {
 }
 
 async function logout() {
+//  Delete from keytar
+    keytar.deletePassword('publicKey', uname);
+    keytar.deletePassword('privateKey', uname);
+    keytar.deletePassword('token', uname);
 
+//  Send logout request to server
+    const body = {
+        token
+    };
+
+//  Destruct / Clear fields in memory
+    privateKey = new Object() as openpgp.PrivateKey;
+    publicKey = privateKey;
+    token = '';
+
+    return await sendRequest('logout', body);
 }
 
 const api = {
