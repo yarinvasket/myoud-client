@@ -1,8 +1,10 @@
 import * as openpgp from 'openpgp';
 import * as bcrypt from 'bcrypt';
 import * as keytar from 'keytar';
+import * as stream from '@openpgp/web-stream-tools';
 import fetch from 'electron-fetch';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 const DHT = require('bittorrent-dht');
 const dht = new DHT({
     verify: (signature: Buffer, message: Buffer, publicKey: Buffer) => {return true;}
@@ -194,11 +196,139 @@ async function restoreSession() {
     return true;
 }
 
+async function downloadFile(remotePath: string, localPath: string) {
+//  Get stream token from server
+    const body = {
+        token,
+        path: remotePath
+    };
+    const params = JSON.parse(await (await sendRequest('download_file', body)).text());
+
+//  Extract information from server response
+    const stream_token: string = params.token;
+    const key = base64decode(params.key);
+    const filesig = base64decode(params.filesig);
+
+    const keyMessage = await openpgp.readMessage({
+        binaryMessage: new Uint8Array(Buffer.from(key))
+    });
+
+    const decryptedKey = await openpgp.decrypt({
+        message: keyMessage,
+        decryptionKeys: privateKey
+    });
+
+    const response = await fetch(serverurl + '/download_stream/' + stream_token);
+    const buffer = new Uint8Array(await response.arrayBuffer());
+
+    const encrypted = await openpgp.readMessage({
+        binaryMessage: buffer
+    });
+
+    const decrypted = await openpgp.decrypt({
+        message: encrypted,
+        passwords: decryptedKey.data.toString(),
+        format: 'binary'
+    });
+
+    const fileMessage = await openpgp.readMessage({
+        binaryMessage: decrypted.data
+    });
+
+    const signature = await openpgp.readSignature({
+        binarySignature: new Uint8Array(Buffer.from(filesig))
+    });
+
+    const ver = await openpgp.verify({
+        message: fileMessage,
+        signature,
+        verificationKeys: publicKey
+    });
+
+    if (!await ver.signatures[0].verified) {
+        throw new Error('File signature invalid');
+    }
+
+    const buf = decrypted.data;
+
+    fs.writeFile(localPath, buf, (err) => {
+        if (err) throw err;
+    });
+}
+
+async function uploadFile(remotePath: string, localPath: string) {
+//  Generate symmetric key to encrypt the file with
+    const key = new Uint8Array(16);
+    for (let i = 0; i < 16; i++) {
+        key[i] = Math.floor(Math.random() * 256);
+    }
+
+//  Create OpenPGP message
+    const keyMessage = await openpgp.createMessage({
+        binary: key
+    });
+
+//  Encrypt encryption key using public key
+    const encrypted = await openpgp.encrypt({
+        message: keyMessage,
+        encryptionKeys: publicKey,
+        format: 'binary'
+    });
+
+//  Path message
+    const pathMessage = await openpgp.createMessage({
+        text: remotePath
+    });
+
+//  Path signature
+    const signature = await openpgp.sign({
+        message: pathMessage,
+        signingKeys: privateKey,
+        detached: true,
+        format: 'binary'
+    });
+
+//  Read file
+    const buffer = new Uint8Array(fs.readFileSync(localPath));
+
+//  File message
+    const fileMessage = await openpgp.createMessage({
+        binary: buffer
+    });
+
+//  File signature
+    const fileSignature = await openpgp.sign({
+        message: fileMessage,
+        signingKeys: privateKey,
+        format: 'binary'
+    });
+
+//  Get stream token from server
+    const body = {
+        token,
+        path: remotePath,
+        file_key: base64encode(encrypted.toString()),
+        pathsig: base64encode(signature.toString()),
+        filesig: base64encode(fileSignature.toString())
+    };
+
+    const encryptedFile = await openpgp.encrypt({
+        message: fileMessage,
+        format: 'binary'
+    })
+
+    const stream_token = JSON.parse(await (await sendRequest('upload_file', body)).text()).token;
+
+    return await sendRequest('upload_stream/' + stream_token, encryptedFile);
+}
+
 const api = {
     register,
     login,
     logout,
     restoreSession,
+    downloadFile,
+    uploadFile,
     closeDHT
 };
 

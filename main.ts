@@ -48,5 +48,5 @@ app.on('window-all-closed', function () {
   if (!await api.restoreSession()) {
     const registerResponse = await api.register('abcd', 'efg');
     const loginResponse = await api.login('abcd', 'efg', true);
-  };
+  }
 })();
