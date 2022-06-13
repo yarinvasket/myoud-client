@@ -20,6 +20,9 @@ let privateKey: openpgp.PrivateKey;
 let token: string;
 let uname: string;
 
+// DEBUG
+//let test: Uint8Array;
+
 function base64encode(str: string) {
     return Buffer.from(str, 'utf8').toString('base64');
 }
@@ -333,20 +336,10 @@ async function uploadFile(remotePath: string, localPath: string) {
     const stream_token = JSON.parse(await (await sendRequest('upload_file', body)).text()).token;
 
 //  TODO: convert to https and change url to serverurl
-    const options = {
-        hostname: 'localhost',
-        port: 80,
-        path: '/upload_stream/' + stream_token,
+    return await fetch(serverurl + '/upload_stream/' + stream_token, {
         method: 'POST',
-        headers: {
-            'Content-Length': encryptedFile.length
-        }
-    };
-
-    const req = http.request(options);
-    req.write(encryptedFile);
-
-    return await sendRequest(encodeURI('upload_stream/' + stream_token), encryptedFile);
+        body: bufferToString(encryptedFile)
+    });
 }
 
 async function downloadFile(remotePath: string, localPath: string) {
@@ -368,11 +361,12 @@ async function downloadFile(remotePath: string, localPath: string) {
 
     const decryptedKey = await openpgp.decrypt({
         message: keyMessage,
-        decryptionKeys: privateKey
+        decryptionKeys: privateKey,
+        format: 'binary'
     });
 
     const response = await fetch(serverurl + '/download_stream/' + stream_token);
-    const buffer = new Uint8Array(await response.arrayBuffer());
+    const buffer = stringToBuffer(await response.text());
 
     const encrypted = await openpgp.readMessage({
         binaryMessage: buffer
@@ -380,7 +374,7 @@ async function downloadFile(remotePath: string, localPath: string) {
 
     const decrypted = await openpgp.decrypt({
         message: encrypted,
-        passwords: decryptedKey.data,
+        passwords: bufferToString(decryptedKey.data),
         format: 'binary'
     });
 
