@@ -4,7 +4,7 @@
   "description": "Myoud's client application",
   "main": "build/main.js",
   "scripts": {
-    "start": "npm run compile && electron .",
+    "start": "npm run compile && electron --trace-warnings .",
     "compile": "tsc && copyfiles -f index.html build"
   },
   "repository": "https://github.com/yarinvasket/myoud-client",
@@ -29,6 +29,7 @@
     "bittorrent-dht": "^10.0.4",
     "electron-fetch": "^1.7.4",
     "keytar": "^7.9.0",
-    "openpgp": "^5.2.1"
+    "openpgp": "^5.2.1",
+    "uint8arrays": "^3.0.0"
   }
 }

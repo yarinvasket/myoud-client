@@ -2,8 +2,10 @@ import * as openpgp from 'openpgp';
 import * as bcrypt from 'bcrypt';
 import * as keytar from 'keytar';
 import * as stream from '@openpgp/web-stream-tools';
+import * as utilbytes from 'uint8arrays';
 import fetch from 'electron-fetch';
 import crypto from 'node:crypto';
+import http from 'node:http';
 import fs from 'node:fs';
 const DHT = require('bittorrent-dht');
 const dht = new DHT({
@@ -28,6 +30,79 @@ function base64decode(base64str: string) {
 
 function closeDHT() {
     dht.destroy();
+}
+
+async function encryptString(str: string, symmetricKey: Uint8Array) {
+    const message = await openpgp.createMessage({
+        text: str
+    });
+
+    const encrypted = await openpgp.encrypt({
+        message,
+        passwords: bufferToString(symmetricKey)
+    });
+
+    return base64encode(encrypted);
+}
+
+async function decryptString(str: string, symmetricKey: Uint8Array) {
+        const encrypted = base64decode(str);
+
+        const encryptedMessage = await openpgp.readMessage({
+            armoredMessage: encrypted
+        });
+
+        const plain = await openpgp.decrypt({
+            message: encryptedMessage,
+            passwords: bufferToString(symmetricKey)
+        });
+
+        return plain.data;
+}
+
+async function encryptBytes(buf: Uint8Array, symmetricKey: Uint8Array) {
+    const message = await openpgp.createMessage({
+        binary: buf
+    });
+
+    const encrypted = await openpgp.encrypt({
+        message,
+        passwords: bufferToString(symmetricKey),
+        format: 'binary'
+    });
+
+    return encrypted;
+}
+
+async function decryptBytes(buf: Uint8Array, symmetricKey: Uint8Array) {
+    const encryptedMessage = await openpgp.readMessage({
+        binaryMessage: buf
+    });
+
+    const plain = await openpgp.decrypt({
+        message: encryptedMessage,
+        passwords: bufferToString(symmetricKey),
+        format: 'binary'
+    });
+
+    return plain.data;
+}
+
+function generateKey() {
+    const key = new Uint8Array(16);
+    for (let i = 0; i < 16; i++) {
+        key[i] = Math.floor(Math.random() * 256);
+    }
+
+    return key;
+}
+
+function bufferToString(buf: Uint8Array) {
+    return utilbytes.toString(buf, 'ascii');
+}
+
+function stringToBuffer(str: string) {
+    return utilbytes.fromString(str, 'ascii');
 }
 
 async function sendRequest(command: string, body: any) {
@@ -94,8 +169,8 @@ async function register(username: string, password: string) {
     const requestBody = {
         user_name: username,
         public_key: base64encode(publicKey.armor()),
-        signature: base64encode(String(signature)),
-        encrypted_private_key: base64encode(String(encrypted_private_key)),
+        signature: base64encode(signature),
+        encrypted_private_key: base64encode(encrypted_private_key),
         hashed_password,
         salt2
     };
@@ -147,7 +222,7 @@ async function login(username: string, password: string, rememberMe: boolean) {
 
 //  Read private key
     privateKey = await openpgp.readPrivateKey({
-        armoredKey: decryptedKey.data.toString()
+        armoredKey: decryptedKey.data
     });
 
     publicKey = privateKey.toPublic();
@@ -162,8 +237,8 @@ async function login(username: string, password: string, rememberMe: boolean) {
 
 async function logout() {
 //  Delete from keytar
-    keytar.deletePassword('privateKey', uname);
-    keytar.deletePassword('token', uname);
+    await keytar.deletePassword('privateKey', uname);
+    await keytar.deletePassword('token', uname);
 
 //  Send logout request to server
     const body = {
@@ -196,72 +271,9 @@ async function restoreSession() {
     return true;
 }
 
-async function downloadFile(remotePath: string, localPath: string) {
-//  Get stream token from server
-    const body = {
-        token,
-        path: remotePath
-    };
-    const params = JSON.parse(await (await sendRequest('download_file', body)).text());
-
-//  Extract information from server response
-    const stream_token: string = params.token;
-    const key = base64decode(params.key);
-    const filesig = base64decode(params.filesig);
-
-    const keyMessage = await openpgp.readMessage({
-        binaryMessage: new Uint8Array(Buffer.from(key))
-    });
-
-    const decryptedKey = await openpgp.decrypt({
-        message: keyMessage,
-        decryptionKeys: privateKey
-    });
-
-    const response = await fetch(serverurl + '/download_stream/' + stream_token);
-    const buffer = new Uint8Array(await response.arrayBuffer());
-
-    const encrypted = await openpgp.readMessage({
-        binaryMessage: buffer
-    });
-
-    const decrypted = await openpgp.decrypt({
-        message: encrypted,
-        passwords: decryptedKey.data.toString(),
-        format: 'binary'
-    });
-
-    const fileMessage = await openpgp.readMessage({
-        binaryMessage: decrypted.data
-    });
-
-    const signature = await openpgp.readSignature({
-        binarySignature: new Uint8Array(Buffer.from(filesig))
-    });
-
-    const ver = await openpgp.verify({
-        message: fileMessage,
-        signature,
-        verificationKeys: publicKey
-    });
-
-    if (!await ver.signatures[0].verified) {
-        throw new Error('File signature invalid');
-    }
-
-    const buf = decrypted.data;
-
-    fs.writeFile(localPath, buf, (err) => {
-        if (err) throw err;
-    });
-}
-
 async function uploadFile(remotePath: string, localPath: string) {
 //  Generate symmetric key to encrypt the file with
-    const key = new Uint8Array(16);
-    for (let i = 0; i < 16; i++) {
-        key[i] = Math.floor(Math.random() * 256);
-    }
+    const key = generateKey();
 
 //  Create OpenPGP message
     const keyMessage = await openpgp.createMessage({
@@ -289,7 +301,7 @@ async function uploadFile(remotePath: string, localPath: string) {
     });
 
 //  Read file
-    const buffer = new Uint8Array(fs.readFileSync(localPath));
+    const buffer = fs.readFileSync(localPath);
 
 //  File message
     const fileMessage = await openpgp.createMessage({
@@ -303,23 +315,98 @@ async function uploadFile(remotePath: string, localPath: string) {
         format: 'binary'
     });
 
+    const encryptedFile = await openpgp.encrypt({
+        message: fileMessage,
+        passwords: bufferToString(key),
+        format: 'binary'
+    });
+
 //  Get stream token from server
     const body = {
         token,
         path: remotePath,
-        file_key: base64encode(encrypted.toString()),
-        pathsig: base64encode(signature.toString()),
-        filesig: base64encode(fileSignature.toString())
+        file_key: base64encode(bufferToString(encrypted)),
+        pathsig: base64encode(bufferToString(signature)),
+        filesig: base64encode(bufferToString(fileSignature))
     };
-
-    const encryptedFile = await openpgp.encrypt({
-        message: fileMessage,
-        format: 'binary'
-    })
 
     const stream_token = JSON.parse(await (await sendRequest('upload_file', body)).text()).token;
 
-    return await sendRequest('upload_stream/' + stream_token, encryptedFile);
+//  TODO: convert to https and change url to serverurl
+    const options = {
+        hostname: 'localhost',
+        port: 80,
+        path: '/upload_stream/' + stream_token,
+        method: 'POST',
+        headers: {
+            'Content-Length': encryptedFile.length
+        }
+    };
+
+    const req = http.request(options);
+    req.write(encryptedFile);
+
+    return await sendRequest(encodeURI('upload_stream/' + stream_token), encryptedFile);
+}
+
+async function downloadFile(remotePath: string, localPath: string) {
+//  Get stream token from server
+    const body = {
+        token,
+        path: remotePath
+    };
+    const params = JSON.parse(await (await sendRequest('download_file', body)).text());
+
+//  Extract information from server response
+    const stream_token: string = params.token;
+    const key = base64decode(params.key);
+    const filesig = base64decode(params.filesig);
+
+    const keyMessage = await openpgp.readMessage({
+        binaryMessage: stringToBuffer(key)
+    });
+
+    const decryptedKey = await openpgp.decrypt({
+        message: keyMessage,
+        decryptionKeys: privateKey
+    });
+
+    const response = await fetch(serverurl + '/download_stream/' + stream_token);
+    const buffer = new Uint8Array(await response.arrayBuffer());
+
+    const encrypted = await openpgp.readMessage({
+        binaryMessage: buffer
+    });
+
+    const decrypted = await openpgp.decrypt({
+        message: encrypted,
+        passwords: decryptedKey.data,
+        format: 'binary'
+    });
+
+    const fileMessage = await openpgp.readMessage({
+        binaryMessage: decrypted.data
+    });
+
+    const signature = await openpgp.readSignature({
+        binarySignature: stringToBuffer(filesig)
+    });
+
+    const ver = await openpgp.verify({
+        message: fileMessage,
+        signature,
+        verificationKeys: publicKey
+    });
+
+    if (!await ver.signatures[0].verified) {
+        throw new Error('File signature invalid');
+    }
+
+    const buf = decrypted.data;
+
+    fs.writeFile(localPath, buf, (err) => {
+        if (err) throw err;
+    });
 }
 
 const api = {
@@ -327,8 +414,8 @@ const api = {
     login,
     logout,
     restoreSession,
-    downloadFile,
     uploadFile,
+    downloadFile,
     closeDHT
 };
 
