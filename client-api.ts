@@ -20,9 +20,6 @@ let privateKey: openpgp.PrivateKey;
 let token: string;
 let uname: string;
 
-// DEBUG
-//let test: Uint8Array;
-
 function base64encode(str: string) {
     return Buffer.from(str, 'utf8').toString('base64');
 }
@@ -378,8 +375,8 @@ async function downloadFile(remotePath: string, localPath: string) {
         format: 'binary'
     });
 
-    const fileMessage = await openpgp.readMessage({
-        binaryMessage: decrypted.data
+/*    const fileMessage = await openpgp.readMessage({
+        binaryMessage: decrypted
     });
 
     const signature = await openpgp.readSignature({
@@ -394,7 +391,7 @@ async function downloadFile(remotePath: string, localPath: string) {
 
     if (!await ver.signatures[0].verified) {
         throw new Error('File signature invalid');
-    }
+    }*/
 
     const buf = decrypted.data;
 
