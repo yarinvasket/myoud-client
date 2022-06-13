@@ -3,9 +3,9 @@ import * as bcrypt from 'bcrypt';
 import * as keytar from 'keytar';
 import * as stream from '@openpgp/web-stream-tools';
 import * as utilbytes from 'uint8arrays';
+import strftime from 'strftime';
 import fetch from 'electron-fetch';
 import crypto from 'node:crypto';
-import http from 'node:http';
 import fs from 'node:fs';
 const DHT = require('bittorrent-dht');
 const dht = new DHT({
@@ -19,6 +19,19 @@ let publicKey: openpgp.PublicKey;
 let privateKey: openpgp.PrivateKey;
 let token: string;
 let uname: string;
+
+let cachedFiles = new Map<string, {
+    date: number,
+    key: Uint8Array,
+    isFolder: boolean
+}>();
+
+let sharedCachedFiles = new Map<string, {
+    date: number,
+    key: Uint8Array,
+    isFolder: boolean,
+    username: string
+}>();
 
 function base64encode(str: string) {
     return Buffer.from(str, 'utf8').toString('base64');
@@ -350,7 +363,7 @@ async function downloadFile(remotePath: string, localPath: string) {
 //  Extract information from server response
     const stream_token: string = params.token;
     const key = base64decode(params.key);
-    const filesig = base64decode(params.filesig);
+//  const filesig = base64decode(params.filesig);
 
     const keyMessage = await openpgp.readMessage({
         binaryMessage: stringToBuffer(key)
@@ -400,6 +413,69 @@ async function downloadFile(remotePath: string, localPath: string) {
     });
 }
 
+async function getPath(remotePath: string) {
+    const body = {
+        token: token,
+        path: remotePath
+    };
+
+    const response = await sendRequest('get_path', body);
+    const files = JSON.parse(await response.text());
+
+    const dirs = remotePath.split('/');
+
+    if (dirs[0] === 'private') {
+        const table: {
+            name: string,
+            date: string,
+            isFolder: string
+        }[] = [];
+
+        for (let i = 0; i < files.length; i += 4) {
+            const actual_path = dirs.length <= 2 ? files[i] :
+                dirs.slice(1).join('/') + '/' + files[i];
+            cachedFiles.set(actual_path, {
+                date: files[i + 1],
+                key: stringToBuffer(base64decode(files[i + 2])),
+                isFolder: files[i + 3] === 0 ? false : true
+            });
+
+            table[i / 4] = {
+                name: files[i],
+                date: strftime('%F %T', new Date(files[i + 1] * 1000)),
+                isFolder: files[i + 3] === 0 ? "No" : "Yes"
+            };
+        }
+
+        return table;
+    }
+
+    const table: {
+        name: string,
+        date: string,
+        isFolder: string,
+        sharer: string
+    }[] = [];
+
+    for (let i = 0; i < files.length; i += 5) {
+        sharedCachedFiles.set('shared/' + files[i], {
+            date: files[i + 1],
+            key: stringToBuffer(base64decode(files[i + 2])),
+            isFolder: files[i + 3] === 0 ? false : true,
+            username: files[i + 4]
+        });
+
+        table[i / 5] = {
+            name: files[i],
+            date: strftime('%F %T', new Date(files[i + 1] * 1000)),
+            isFolder: files[i + 3] === 0 ? "No" : "Yes",
+            sharer: files[i + 4]
+        };
+    }
+
+    return table;
+}
+
 const api = {
     register,
     login,
@@ -407,6 +483,7 @@ const api = {
     restoreSession,
     uploadFile,
     downloadFile,
+    getPath,
     closeDHT
 };
 
