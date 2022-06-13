@@ -55,4 +55,5 @@ app.on('window-all-closed', function () {
   /*const uploadResponse = await api.uploadFile('main.ts', './main.ts');
   const downloadResponse = await api.downloadFile('main.ts', './main2.ts');*/
   await api.getPath('private');
+  await api.shareFile('abcd', 'main.ts');
 })();

@@ -45,62 +45,6 @@ function closeDHT() {
     dht.destroy();
 }
 
-async function encryptString(str: string, symmetricKey: Uint8Array) {
-    const message = await openpgp.createMessage({
-        text: str
-    });
-
-    const encrypted = await openpgp.encrypt({
-        message,
-        passwords: bufferToString(symmetricKey)
-    });
-
-    return base64encode(encrypted);
-}
-
-async function decryptString(str: string, symmetricKey: Uint8Array) {
-        const encrypted = base64decode(str);
-
-        const encryptedMessage = await openpgp.readMessage({
-            armoredMessage: encrypted
-        });
-
-        const plain = await openpgp.decrypt({
-            message: encryptedMessage,
-            passwords: bufferToString(symmetricKey)
-        });
-
-        return plain.data;
-}
-
-async function encryptBytes(buf: Uint8Array, symmetricKey: Uint8Array) {
-    const message = await openpgp.createMessage({
-        binary: buf
-    });
-
-    const encrypted = await openpgp.encrypt({
-        message,
-        passwords: bufferToString(symmetricKey),
-        format: 'binary'
-    });
-
-    return encrypted;
-}
-
-async function decryptBytes(buf: Uint8Array, symmetricKey: Uint8Array) {
-    const encryptedMessage = await openpgp.readMessage({
-        binaryMessage: buf
-    });
-
-    const plain = await openpgp.decrypt({
-        message: encryptedMessage,
-        passwords: bufferToString(symmetricKey),
-        format: 'binary'
-    });
-
-    return plain.data;
-}
-
 function generateKey() {
     const key = new Uint8Array(16);
     for (let i = 0; i < 16; i++) {
@@ -415,7 +359,7 @@ async function downloadFile(remotePath: string, localPath: string) {
 
 async function getPath(remotePath: string) {
     const body = {
-        token: token,
+        token,
         path: remotePath
     };
 
@@ -476,6 +420,51 @@ async function getPath(remotePath: string) {
     return table;
 }
 
+async function shareFile(sharedUser: string, remotePath: string) {
+    const public_key = base64decode(JSON.parse(await (await sendRequest('get_public_key', {
+        user_name: sharedUser
+    })).text()).pk);
+
+    const userkey = (await openpgp.readKey({
+        armoredKey: public_key
+    })).toPublic();
+
+    const key = cachedFiles.get(remotePath)?.key;
+    if (key === undefined) {
+        throw new Error('path doesn\'t exist');
+    }
+
+    const keyMessage = await openpgp.readMessage({
+        binaryMessage: key
+    });
+
+    const decryptedKey = await openpgp.decrypt({
+        message: keyMessage,
+        decryptionKeys: privateKey,
+        format: 'binary'
+    });
+
+//  Create OpenPGP message
+    const keyMessage2 = await openpgp.createMessage({
+        binary: decryptedKey.data as Uint8Array
+    });
+
+//  Encrypt encryption key using shared user's public key
+    const encrypted = await openpgp.encrypt({
+        message: keyMessage2,
+        encryptionKeys: userkey,
+        format: 'binary'
+    });
+
+    return await sendRequest('share_file', {
+        token,
+        path: remotePath,
+        username: sharedUser,
+        file_key: base64encode(bufferToString(encrypted)),
+        sharesig: 'J'
+    });
+}
+
 const api = {
     register,
     login,
@@ -484,6 +473,7 @@ const api = {
     uploadFile,
     downloadFile,
     getPath,
+    shareFile,
     closeDHT
 };
 
