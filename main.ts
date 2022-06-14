@@ -52,8 +52,9 @@ app.on('window-all-closed', function () {
     const registerResponse = await api.register('abcd', 'efg');
     const loginResponse = await api.login('abcd', 'efg', true);
   }
-  /*const uploadResponse = await api.uploadFile('main.ts', './main.ts');
-  const downloadResponse = await api.downloadFile('main.ts', './main2.ts');*/
+  const uploadResponse = await api.uploadFile('main.ts', './main.ts');
+  const downloadResponse = await api.downloadFile('private/main.ts', './main2.ts');
   await api.getPath('private');
   await api.shareFile('abcd', 'main.ts');
+  await api.downloadFile('shared/main.ts', 'main3.ts');
 })();
