@@ -77,8 +77,8 @@ async function sendRequest(command: string, body: any) {
 async function register(username: string, password: string) {
 //  Generate key pair
     const { privateKey, publicKey } = await openpgp.generateKey({
-        type: 'rsa', // Type of the key
-        rsaBits: 4096, // Curve, dht requires ed25519
+        type: 'ecc', // Type of the key
+        curve: 'ed25519', // Curve, dht requires ed25519
         userIDs: [{ name: username, email: username + '@myoud.org' }], // you can pass multiple user IDs
         format: 'object' // output key format, defaults to 'armored'
     });
@@ -187,8 +187,8 @@ async function login(username: string, password: string, rememberMe: boolean) {
 
 //  Save all of the credentials if "remember me" was ticked
     if (rememberMe) {
-        keytar.setPassword('privateKey', username, privateKey.armor());
-        keytar.setPassword('token', username, token);
+        await keytar.setPassword('privateKey', username, bufferToString(privateKey.toPacketList().write()));
+        await keytar.setPassword('token', username, token);
     }
 }
 
@@ -217,11 +217,11 @@ async function restoreSession() {
     } catch {
         return false;
     }
-    const armoredKey = (await keytar.findCredentials('privateKey'))[0].password;
+    const binaryKey = stringToBuffer((await keytar.findCredentials('privateKey'))[0].password);
     token = (await keytar.findCredentials('token'))[0].password;
 
     privateKey = await openpgp.readPrivateKey({
-        armoredKey: armoredKey
+        binaryKey
     });
     publicKey = privateKey.toPublic();
 
