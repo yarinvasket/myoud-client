@@ -215,7 +215,7 @@ async function restoreSession() {
 //  Get accounts from keytar
     const privateKeys = await keytar.findCredentials('privateKey');
     if (privateKeys.length === 0) {
-        throw new Error('No accounts saved');
+        return false;
     }
     uname = privateKeys[0].account;
     const binaryKey = stringToBuffer(privateKeys[0].password);
