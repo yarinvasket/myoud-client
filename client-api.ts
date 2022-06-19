@@ -212,12 +212,13 @@ async function logout() {
 }
 
 async function restoreSession() {
-    try {
-        uname = (await keytar.findCredentials('privateKey'))[0].account;
-    } catch {
-        return false;
+//  Get accounts from keytar
+    const privateKeys = await keytar.findCredentials('privateKey');
+    if (privateKeys.length === 0) {
+        throw new Error('No accounts saved');
     }
-    const binaryKey = stringToBuffer((await keytar.findCredentials('privateKey'))[0].password);
+    uname = privateKeys[0].account;
+    const binaryKey = stringToBuffer(privateKeys[0].password);
     token = (await keytar.findCredentials('token'))[0].password;
 
     privateKey = await openpgp.readPrivateKey({
@@ -226,6 +227,31 @@ async function restoreSession() {
     publicKey = privateKey.toPublic();
 
     return true;
+}
+
+async function listSavedAccounts() {
+    const privateKeys = await keytar.findCredentials('privateKey');
+    return privateKeys.map(key => key.account);
+}
+
+async function restoreUserSession(username: string) {
+    const privateKeys = await keytar.findCredentials('privateKey');
+    for (let i = 0; i < privateKeys.length; i++) {
+        if (privateKeys[i].account === username) {
+            uname = username;
+            const binaryKey = stringToBuffer(privateKeys[i].password);
+            token = (await keytar.findCredentials('token'))[i].password;
+
+            privateKey = await openpgp.readPrivateKey({
+                binaryKey
+            });
+            publicKey = privateKey.toPublic();
+
+            return;
+        }
+    }
+
+    throw new Error('User not saved');
 }
 
 async function uploadFile(remotePath: string, localPath: string) {
@@ -470,6 +496,8 @@ const api = {
     login,
     logout,
     restoreSession,
+    listSavedAccounts,
+    restoreUserSession,
     uploadFile,
     downloadFile,
     getPath,

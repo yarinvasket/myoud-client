@@ -49,12 +49,20 @@ app.on('window-all-closed', function () {
   await api.logout();*/
 
   if (!await api.restoreSession()) {
-    const registerResponse = await api.register('abcd', 'efg');
-    const loginResponse = await api.login('abcd', 'efg', true);
+    api.register('abcd', 'efg');
+    await api.login('abcd', 'efg', true);
   }
-  const uploadResponse = await api.uploadFile('main.ts', './main.ts');
-  const downloadResponse = await api.downloadFile('private/main.ts', './main2.ts');
-  await api.getPath('private');
+  await api.uploadFile('main.ts', './main.ts');
+  await api.downloadFile('private/main.ts', './main2.ts');
+  console.log(await api.getPath('private'));
   await api.shareFile('abcd', 'main.ts');
   await api.downloadFile('shared/main.ts', 'main3.ts');
+  await api.register('abc', 'efg');
+  await api.login('abc', 'efg', false);
+  await api.uploadFile('main2.ts', './main.ts');
+  console.log(await api.getPath('private'));
+  await api.shareFile('abcd', 'main2.ts');
+  await api.login('abcd', 'efg', false);
+  console.log(await api.getPath('shared'));
+  await api.downloadFile('shared/main2.ts', 'main4.ts');
 })();
