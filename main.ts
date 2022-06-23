@@ -49,7 +49,7 @@ app.on('window-all-closed', function () {
   await api.logout();*/
 
   if (!await api.restoreSession()) {
-    api.register('abcd', 'efg');
+    await api.register('abcd', 'efg');
     await api.login('abcd', 'efg', true);
   }
   await api.uploadFile('main.ts', './main.ts');
