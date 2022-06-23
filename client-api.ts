@@ -62,6 +62,38 @@ function stringToBuffer(str: string) {
     return utilbytes.fromString(str, 'ascii');
 }
 
+async function encryptBuffer(buf: Uint8Array, key: Uint8Array | string) {
+    const message = await openpgp.createMessage({
+        binary: buf,
+        format: 'binary'
+    });
+
+    const password = key instanceof Uint8Array ? bufferToString(key) : key;
+
+    const encrypted = await openpgp.encrypt({
+        message,
+        passwords: password,
+        format: 'binary'
+    });
+
+    return encrypted;
+}
+
+async function decryptBuffer(buf: Uint8Array, key: Uint8Array | string) {
+    const password = key instanceof Uint8Array ? bufferToString(key) : key;
+
+    const decrypted = await openpgp.decrypt({
+        message: await openpgp.createMessage({
+            binary: buf,
+            format: 'binary'
+        }),
+        passwords: password,
+        format: 'binary'
+    });
+
+    return decrypted.data;
+}
+
 async function sendRequest(command: string, body: any) {
     return await fetch(
         serverurl + '/' + command, {
