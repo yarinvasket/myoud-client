@@ -165,9 +165,7 @@ async function register(username: string, password: string) {
     };
 
 //  Send the request
-    const registerResponse = sendRequest('register', requestBody);
-
-    return registerResponse;
+    return await sendRequest('register', requestBody);
 }
 
 async function login(username: string, password: string, rememberMe: boolean) {
